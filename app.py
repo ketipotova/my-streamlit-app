@@ -4,14 +4,12 @@ import numpy as np
 import io
 import base64
 
-
 # Helper functions
 def add_leading_zero(id_value):
     if len(str(id_value)) < 11:
         return '0' * (11 - len(str(id_value))) + str(id_value)
     else:
         return str(id_value)
-
 
 def is_numeric_or_off(val):
     if pd.isna(val):
@@ -22,14 +20,12 @@ def is_numeric_or_off(val):
     except ValueError:
         return str(val).upper() == "OFF"
 
-
 def is_date_like(col_name):
     try:
         pd.to_datetime(col_name)
         return True
     except ValueError:
         return False
-
 
 def fill_hours_based_on_day(df):
     date_columns = df.columns[17:]  # Assuming date columns start from index 17
@@ -38,10 +34,9 @@ def fill_hours_based_on_day(df):
         fill_value = '8' if col_date.weekday() < 5 else 'OFF'
         df[col_name] = df[col_name].apply(lambda x: fill_value if pd.isna(x) else x)
 
-
 def calculate_row_summaries(row, date_columns):
     totals = {'first_half': 0, 'second_half': 0, 'month': 0, 'days_worked': 0}
-    counts = {'OFF': 0, 'Paid leave': 0, 'Unpaid leave': 0, 'Maternity leave': 0, 'Sick leave': 0}
+    counts = {'OFF': 0, 'Paid leave': 0, 'Unpaid leave': 0, 'Maternity leave': 0, 'Sick leave': 0, 'Mental Dayoff': 0}
 
     for col_name in date_columns:
         day = pd.to_datetime(col_name).day
@@ -64,10 +59,10 @@ def calculate_row_summaries(row, date_columns):
     row['არა ანაზღაურებადი შვებულება'] = counts['Unpaid leave']
     row['დეკრეტული'] = counts['Maternity leave']
     row['ბიულეტენი'] = counts['Sick leave']
+    row['Mental Dayoff'] = counts['Mental Dayoff']
     row['სულ არასამუშაო დღე'] = sum(counts.values())
 
     return row
-
 
 def process_data(main, pf_leaves, pf_id, shifts):
     # Merge and process data
@@ -75,7 +70,11 @@ def process_data(main, pf_leaves, pf_id, shifts):
     pf_leaves['ID number'] = pf_leaves['ID number'].apply(lambda x: '{:.0f}'.format(x))
 
     # Replace leave type values for consistency
-    pf_leaves['Leave Type'] = pf_leaves['Leave Type'].replace({'Work from home': np.nan, 'BirthDay off': 'Paid leave'})
+    pf_leaves['Leave Type'] = pf_leaves['Leave Type'].replace({
+        'Work from home': np.nan,
+        'BirthDay off': 'Paid leave',
+        'Mental Dayoff': 'Mental Dayoff'
+    })
 
     pf_leaves['Starts on'] = pd.to_datetime(pf_leaves['Starts on'])
     pf_leaves['Ends on'] = pd.to_datetime(pf_leaves['Ends on'])
@@ -137,7 +136,8 @@ def process_data(main, pf_leaves, pf_id, shifts):
         'Paid leave': 'შვ',
         'Unpaid leave': 'არ.შვ',
         'Maternity leave': 'დეკ',
-        'Sick leave': 'ბიულ'
+        'Sick leave': 'ბიულ',
+        'Mental Dayoff': 'Mental Dayoff'
     }
     main = main.replace(replacement_dict)
 
@@ -168,7 +168,6 @@ def process_data(main, pf_leaves, pf_id, shifts):
 
     return main
 
-
 def get_table_download_link(df):
     """Generates a link allowing the data in a given panda dataframe to be downloaded"""
     output = io.BytesIO()
@@ -177,10 +176,8 @@ def get_table_download_link(df):
     b64 = base64.b64encode(output.getvalue()).decode()
     return f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="processed_data.xlsx">Download Excel file</a>'
 
-
 def read_excel_file(file):
     return pd.read_excel(file, engine='openpyxl')
-
 
 # Streamlit app
 st.title('Data Processing App')
