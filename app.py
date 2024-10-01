@@ -22,7 +22,7 @@ def is_numeric_or_off(val):
 
 def is_date_like(col_name):
     try:
-        pd.to_datetime(col_name)
+        pd.to_datetime(col_name, format='mixed', dayfirst=True)
         return True
     except ValueError:
         return False
@@ -30,16 +30,16 @@ def is_date_like(col_name):
 def fill_hours_based_on_day(df):
     date_columns = df.columns[17:]  # Assuming date columns start from index 17
     for col_name in date_columns:
-        col_date = pd.to_datetime(col_name)
+        col_date = pd.to_datetime(col_name, format='%Y-%m-%d %H:%M:%S')
         fill_value = '8' if col_date.weekday() < 5 else 'OFF'
         df[col_name] = df[col_name].apply(lambda x: fill_value if pd.isna(x) else x)
 
 def calculate_row_summaries(row, date_columns):
     totals = {'first_half': 0, 'second_half': 0, 'month': 0, 'days_worked': 0}
-    counts = {'OFF': 0, 'Paid leave': 0, 'Unpaid leave': 0, 'Maternity leave': 0, 'Sick leave': 0, 'Mental Dayoff': 0}
+    counts = {'OFF': 0, 'Paid leave': 0, 'Unpaid leave': 0, 'Maternity leave': 0, 'Sick leave': 0, 'Mental Day Off': 0}
 
     for col_name in date_columns:
-        day = pd.to_datetime(col_name).day
+        day = pd.to_datetime(col_name, format='%Y-%m-%d %H:%M:%S').day
         value = row[col_name]
         numeric_value = pd.to_numeric(value, errors='coerce')
 
@@ -59,7 +59,7 @@ def calculate_row_summaries(row, date_columns):
     row['არა ანაზღაურებადი შვებულება'] = counts['Unpaid leave']
     row['დეკრეტული'] = counts['Maternity leave']
     row['ბიულეტენი'] = counts['Sick leave']
-    row['Mental Dayoff'] = counts['Mental Dayoff']
+    row['Mental Day Off'] = counts['Mental Day Off']
     row['სულ არასამუშაო დღე'] = sum(counts.values())
 
     return row
@@ -73,11 +73,21 @@ def process_data(main, pf_leaves, pf_id, shifts):
     pf_leaves['Leave Type'] = pf_leaves['Leave Type'].replace({
         'Work from home': np.nan,
         'BirthDay off': 'Paid leave',
-        'Mental Dayoff': 'Mental Dayoff'
+        'Mental Day Off': 'Mental Day Off'
     })
 
-    pf_leaves['Starts on'] = pd.to_datetime(pf_leaves['Starts on'])
-    pf_leaves['Ends on'] = pd.to_datetime(pf_leaves['Ends on'])
+    # Debug print
+    print("Sample dates from pf_leaves before conversion:")
+    print(pf_leaves['Starts on'].head())
+    print(pf_leaves['Ends on'].head())
+
+    pf_leaves['Starts on'] = pd.to_datetime(pf_leaves['Starts on'], format='mixed', dayfirst=True)
+    pf_leaves['Ends on'] = pd.to_datetime(pf_leaves['Ends on'], format='mixed', dayfirst=True)
+
+    # Debug print
+    print("Sample dates from pf_leaves after conversion:")
+    print(pf_leaves['Starts on'].head())
+    print(pf_leaves['Ends on'].head())
 
     # Generate date range and flatten leave data
     start_date = pf_leaves['Starts on'].min()
@@ -137,7 +147,7 @@ def process_data(main, pf_leaves, pf_id, shifts):
         'Unpaid leave': 'არ.შვ',
         'Maternity leave': 'დეკ',
         'Sick leave': 'ბიულ',
-        'Mental Dayoff': 'Mental Dayoff'
+        'Mental Day Off': 'Mental Day Off'
     }
     main = main.replace(replacement_dict)
 
