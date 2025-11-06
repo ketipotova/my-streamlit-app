@@ -101,7 +101,7 @@ def fill_hours_based_on_day(df):
         fill_value = '8' if col_date.weekday() < 5 else 'OFF'
         df[col_name] = df[col_name].apply(lambda x: fill_value if pd.isna(x) else x)
 
-def calculate_row_summaries(row, date_columns):
+def calculate_row_summaries(row, date_columns, month_name='MONTH'):
     totals = {'first_half': 0, 'second_half': 0, 'month': 0, 'days_worked': 0}
     counts = {'OFF': 0, 'Paid leave': 0, 'Unpaid leave': 0, 'Maternity leave': 0, 'Sick leave': 0}
 
@@ -120,10 +120,10 @@ def calculate_row_summaries(row, date_columns):
             # Count Mental Day Off and BirthDay off as Paid leave in summary
             counts['Paid leave'] += 1
 
-    row['ნამუშევარი საათი 1-15 მარტი'] = totals['first_half']
-    row['ნამუშევარი საათი 16-31 მარტი'] = totals['second_half']
-    row['ნამუშევარი საათი მარტი'] = totals['month']
-    row['ნამუშევარი დღე მარტი'] = totals['days_worked']
+    row[f'ნამუშევარი საათი 1-15 {month_name}'] = totals['first_half']
+    row[f'ნამუშევარი საათი 16-31 {month_name}'] = totals['second_half']
+    row[f'ნამუშევარი საათი {month_name}'] = totals['month']
+    row[f'ნამუშევარი დღე {month_name}'] = totals['days_worked']
     row['OFF'] = counts['OFF']
     row['ანაზღაურებადი შვებულება'] = counts['Paid leave']
     row['არა ანაზღაურებადი შვებულება'] = counts['Unpaid leave']
@@ -208,9 +208,24 @@ def process_data(main, pf_leaves, pf_id, shifts):
     # Fill hours based on weekdays or weekends
     fill_hours_based_on_day(main)
 
-    # Calculate row summaries
+    # Determine the current month from the date columns first
     date_columns = [col for col in main.columns if is_date_like(col)]
-    main = main.apply(lambda row: calculate_row_summaries(row, date_columns), axis=1)
+
+    month_mapping = {
+        'January': 'იანვარი', 'February': 'თებერვალი', 'March': 'მარტი',
+        'April': 'აპრილი', 'May': 'მაისი', 'June': 'ივნისი',
+        'July': 'ივლისი', 'August': 'აგვისტო', 'September': 'სექტემბერი',
+        'October': 'ოქტომბერი', 'November': 'ნოემბერი', 'December': 'დეკემბერი'
+    }
+
+    if date_columns:
+        current_month = pd.to_datetime(date_columns[0]).strftime('%B')
+        current_month_georgian = month_mapping.get(current_month, current_month)
+    else:
+        current_month_georgian = 'Unknown'
+
+    # Calculate row summaries with correct month name
+    main = main.apply(lambda row: calculate_row_summaries(row, date_columns, current_month_georgian), axis=1)
 
     # Drop unnecessary column and replace leave type values
     main.drop(columns=['Unnamed: 16'], inplace=True, errors='ignore')
@@ -228,28 +243,6 @@ def process_data(main, pf_leaves, pf_id, shifts):
     }
     main = main.replace(replacement_dict)
 
-    # Translate month names to Georgian
-    month_mapping = {
-        'January': 'იანვარი', 'February': 'თებერვალი', 'March': 'მარტი',
-        'April': 'აპრილი', 'May': 'მაისი', 'June': 'ივნისი',
-        'July': 'ივლისი', 'August': 'აგვისტო', 'September': 'სექტემბერი',
-        'October': 'ოქტომბერი', 'November': 'ნოემბერი', 'December': 'დეკემბერი'
-    }
-
-    # Determine the current month from the date columns
-    if date_columns:
-        current_month = pd.to_datetime(date_columns[0]).strftime('%B')
-        current_month_georgian = month_mapping.get(current_month, current_month)
-    else:
-        current_month_georgian = 'Unknown'
-
-    # Replace 'მარტი' with the actual month name in specific columns
-    position_index = main.columns.get_loc('პოზიცია')
-    columns_to_update = main.columns[position_index + 1:position_index + 5]
-    for col in columns_to_update:
-        new_col_name = col.replace('მარტი', current_month_georgian)
-        main.rename(columns={col: new_col_name}, inplace=True)
-
     # Reorder columns: move summary columns right after პოზიცია
     summary_cols = [
         f'ნამუშევარი საათი 1-15 {current_month_georgian}',
@@ -264,10 +257,13 @@ def process_data(main, pf_leaves, pf_id, shifts):
         'სულ არასამუშაო დღე'
     ]
 
-    # Get columns before პოზიცია
+    # Get position index
+    position_index = main.columns.get_loc('პოზიცია')
+
+    # Get columns before პოზიცია (inclusive)
     cols_before = main.columns[:position_index + 1].tolist()
 
-    # Get date columns (after summary columns in current order)
+    # Get date columns
     date_cols = [col for col in main.columns if is_date_like(col)]
 
     # Get any remaining columns that are not in the above lists
