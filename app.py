@@ -292,38 +292,113 @@ def get_table_download_link(df):
 def read_excel_file(file):
     return pd.read_excel(file, engine='openpyxl')
 
+def identify_file_type(df, filename):
+    """
+    Identifies the type of uploaded file based on column names and filename.
+    Returns: 'main', 'pf_id', 'pf_leaves', 'shifts', or None
+    """
+    columns = set(df.columns)
+    filename_lower = filename.lower()
+
+    # Check by filename first
+    if 'main' in filename_lower:
+        return 'main'
+    elif 'pf_id' in filename_lower or 'peopleforce-id' in filename_lower or 'id' in filename_lower:
+        return 'pf_id'
+    elif 'leave' in filename_lower:
+        return 'pf_leaves'
+    elif 'shift' in filename_lower:
+        return 'shifts'
+
+    # Check by columns
+    # pf_leaves: has Leave Type, Starts on, Ends on
+    if 'Leave Type' in columns and 'Starts on' in columns and 'Ends on' in columns:
+        return 'pf_leaves'
+
+    # pf_id: has Email, ID number, Position (but no Leave Type)
+    if 'Email' in columns and 'ID number' in columns and 'Position' in columns:
+        return 'pf_id'
+
+    # shifts: has ID and date columns, but not სახელი, გვარი
+    has_id = 'ID' in columns
+    has_georgian_names = 'სახელი' in columns and 'გვარი' in columns
+    has_date_cols = any(isinstance(col, pd.Timestamp) for col in df.columns)
+
+    if has_id and has_date_cols and not has_georgian_names:
+        return 'shifts'
+
+    # main: has ID, სახელი, გვარი, პოზიცია, and date columns
+    if has_id and has_georgian_names and 'პოზიცია' in columns and has_date_cols:
+        return 'main'
+
+    return None
+
 # Streamlit app
 st.title('Data Processing App')
 
 st.write("""
 This app processes four Excel files and generates a final Excel file.
-Please upload the required files below.
+Upload all four required files at once, and the system will automatically detect which is which.
 """)
 
-# File uploaders
-main_file = st.file_uploader("Upload main file", type=['xlsx'])
-pf_id_file = st.file_uploader("Upload pf_id file", type=['xlsx'])
-pf_leaves_file = st.file_uploader("Upload pf_leaves file", type=['xlsx'])
-shifts_file = st.file_uploader("Upload shifts file", type=['xlsx'])
+# Single file uploader for multiple files
+uploaded_files = st.file_uploader("Upload all Excel files (main, pf_id, pf_leaves, shifts)",
+                                   type=['xlsx'],
+                                   accept_multiple_files=True)
 
-if main_file and pf_id_file and pf_leaves_file and shifts_file:
-    # Read the uploaded files
+if uploaded_files and len(uploaded_files) >= 4:
     try:
-        main = read_excel_file(main_file)
-        pf_id = read_excel_file(pf_id_file)
-        pf_leaves = read_excel_file(pf_leaves_file)
-        shifts = read_excel_file(shifts_file)
+        # Identify and categorize uploaded files
+        st.write("### Identifying files...")
+        file_map = {}
+        identified = []
 
-        # Process the data
-        processed_data = process_data(main, pf_leaves, pf_id, shifts)
+        for uploaded_file in uploaded_files:
+            df = read_excel_file(uploaded_file)
+            file_type = identify_file_type(df, uploaded_file.name)
 
-        # Display a sample of the processed data
-        st.write("Sample of processed data:")
-        st.dataframe(processed_data.head())
+            if file_type:
+                file_map[file_type] = df
+                identified.append(f"✓ {uploaded_file.name} → {file_type}")
+            else:
+                identified.append(f"✗ {uploaded_file.name} → Could not identify")
 
-        # Provide download link
-        st.markdown(get_table_download_link(processed_data), unsafe_allow_html=True)
+        # Display identification results
+        for msg in identified:
+            st.write(msg)
+
+        # Check if we have all required files
+        required_files = ['main', 'pf_id', 'pf_leaves', 'shifts']
+        missing_files = [f for f in required_files if f not in file_map]
+
+        if missing_files:
+            st.error(f"Missing files: {', '.join(missing_files)}")
+            st.write("Please upload all 4 required file types.")
+        else:
+            st.success("All files identified successfully!")
+
+            # Process the data
+            st.write("### Processing data...")
+            processed_data = process_data(
+                file_map['main'],
+                file_map['pf_leaves'],
+                file_map['pf_id'],
+                file_map['shifts']
+            )
+
+            # Display a sample of the processed data
+            st.write("### Sample of processed data:")
+            st.dataframe(processed_data.head())
+
+            # Provide download link
+            st.write("### Download processed file:")
+            st.markdown(get_table_download_link(processed_data), unsafe_allow_html=True)
+
     except Exception as e:
         st.error(f"An error occurred while processing the files: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc())
+elif uploaded_files and len(uploaded_files) < 4:
+    st.warning(f"Please upload at least 4 files. You have uploaded {len(uploaded_files)} file(s).")
 else:
-    st.write("Please upload all required files to process the data.")
+    st.info("👆 Please upload all 4 required Excel files to process the data.")
