@@ -116,6 +116,9 @@ def calculate_row_summaries(row, date_columns):
             totals['days_worked'] += 1
         elif value in counts:
             counts[value] += 1
+        elif value in ['Mental Day Off', 'BirthDay off']:
+            # Count Mental Day Off and BirthDay off as Paid leave in summary
+            counts['Paid leave'] += 1
 
     row['ნამუშევარი საათი 1-15 მარტი'] = totals['first_half']
     row['ნამუშევარი საათი 16-31 მარტი'] = totals['second_half']
@@ -136,10 +139,10 @@ def process_data(main, pf_leaves, pf_id, shifts):
     pf_leaves['ID number'] = pf_leaves['ID number'].apply(lambda x: '{:.0f}'.format(x))
 
     # Replace leave type values for consistency
+    # Note: Mental Day Off and BirthDay off are kept as separate values in date columns
+    # but counted together with Paid leave in summary columns
     pf_leaves['Leave Type'] = pf_leaves['Leave Type'].replace({
-        'Work from home': np.nan,
-        'BirthDay off': 'Paid leave',
-        'Mental Day Off': 'Paid leave'  # Mental Day Off treated as Paid leave
+        'Work from home': np.nan
     })
 
     # Debug print
@@ -215,7 +218,9 @@ def process_data(main, pf_leaves, pf_id, shifts):
         'Paid leave': 'შვ',
         'Unpaid leave': 'არ.შვ',
         'Maternity leave': 'დეკ',
-        'Sick leave': 'ბიულ'
+        'Sick leave': 'ბიულ',
+        'BirthDay off': 'Birthday',
+        'Mental Day Off': 'Mental'
     }
     main = main.replace(replacement_dict)
 
