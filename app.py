@@ -214,6 +214,10 @@ def process_data(main, pf_leaves, pf_id, shifts):
 
     # Drop unnecessary column and replace leave type values
     main.drop(columns=['Unnamed: 16'], inplace=True, errors='ignore')
+
+    # Normalize 'off' to 'OFF' for consistency
+    main = main.replace({'off': 'OFF'})
+
     replacement_dict = {
         'Paid leave': 'შვ',
         'Unpaid leave': 'არ.შვ',
