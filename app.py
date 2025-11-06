@@ -27,6 +27,73 @@ def is_date_like(col_name):
     except ValueError:
         return False
 
+def validate_and_fix_date_columns(main, pf_leaves, shifts):
+    """
+    Validates that date columns across all input files use consistent years.
+    Auto-fixes any mismatches by updating to the correct year from pf_leaves.
+    Returns the fixed dataframes and shows warnings if fixes were applied.
+    """
+    # Get years from each source
+    main_date_cols = [col for col in main.columns if isinstance(col, pd.Timestamp) or hasattr(col, 'year')]
+    shifts_date_cols = [col for col in shifts.columns if isinstance(col, pd.Timestamp) or hasattr(col, 'year')]
+
+    main_year = None
+    shifts_year = None
+    pf_leaves_year = None
+
+    if main_date_cols:
+        main_year = getattr(main_date_cols[0], 'year', None)
+
+    if shifts_date_cols:
+        shifts_year = getattr(shifts_date_cols[0], 'year', None)
+
+    if 'Starts on' in pf_leaves.columns and not pf_leaves.empty:
+        pf_leaves_year = pf_leaves['Starts on'].min().year
+
+    # Use pf_leaves year as the source of truth
+    target_year = pf_leaves_year
+
+    if target_year is None:
+        # No dates to validate against
+        return main, shifts
+
+    # Check for mismatches and fix
+    warnings = []
+
+    def fix_columns(df, df_name, current_year):
+        if current_year and current_year != target_year:
+            new_columns = []
+            fixed_count = 0
+
+            for col in df.columns:
+                if isinstance(col, pd.Timestamp) or hasattr(col, 'year'):
+                    if hasattr(col, 'year') and col.year != target_year:
+                        new_col = col.replace(year=target_year)
+                        new_columns.append(new_col)
+                        fixed_count += 1
+                    else:
+                        new_columns.append(col)
+                else:
+                    new_columns.append(col)
+
+            if fixed_count > 0:
+                df = df.copy()
+                df.columns = new_columns
+                warnings.append(f"{df_name}: Fixed {fixed_count} date columns from {current_year} to {target_year}")
+
+            return df
+        return df
+
+    main = fix_columns(main, "Main file", main_year)
+    shifts = fix_columns(shifts, "Shifts file", shifts_year)
+
+    if warnings:
+        warning_msg = "⚠️ Date column years were automatically corrected:\n" + "\n".join(f"  • {w}" for w in warnings)
+        st.warning(warning_msg)
+        print(f"\n{warning_msg}")
+
+    return main, shifts
+
 def fill_hours_based_on_day(df):
     date_columns = df.columns[17:]  # Assuming date columns start from index 17
     for col_name in date_columns:
@@ -83,6 +150,9 @@ def process_data(main, pf_leaves, pf_id, shifts):
 
     pf_leaves['Starts on'] = pd.to_datetime(pf_leaves['Starts on'], format='mixed', dayfirst=True)
     pf_leaves['Ends on'] = pd.to_datetime(pf_leaves['Ends on'], format='mixed', dayfirst=True)
+
+    # Validate and fix date column years to prevent mismatches
+    main, shifts = validate_and_fix_date_columns(main, pf_leaves, shifts)
 
     # Debug print
     print("Sample dates from pf_leaves after conversion:")
