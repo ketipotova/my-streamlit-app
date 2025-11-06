@@ -103,7 +103,7 @@ def fill_hours_based_on_day(df):
 
 def calculate_row_summaries(row, date_columns):
     totals = {'first_half': 0, 'second_half': 0, 'month': 0, 'days_worked': 0}
-    counts = {'OFF': 0, 'Paid leave': 0, 'Unpaid leave': 0, 'Maternity leave': 0, 'Sick leave': 0, 'Mental Day Off': 0}
+    counts = {'OFF': 0, 'Paid leave': 0, 'Unpaid leave': 0, 'Maternity leave': 0, 'Sick leave': 0}
 
     for col_name in date_columns:
         day = pd.to_datetime(col_name, format='%Y-%m-%d %H:%M:%S').day
@@ -126,7 +126,6 @@ def calculate_row_summaries(row, date_columns):
     row['არა ანაზღაურებადი შვებულება'] = counts['Unpaid leave']
     row['დეკრეტული'] = counts['Maternity leave']
     row['ბიულეტენი'] = counts['Sick leave']
-    row['Mental Day Off'] = counts['Mental Day Off']
     row['სულ არასამუშაო დღე'] = sum(counts.values())
 
     return row
@@ -140,7 +139,7 @@ def process_data(main, pf_leaves, pf_id, shifts):
     pf_leaves['Leave Type'] = pf_leaves['Leave Type'].replace({
         'Work from home': np.nan,
         'BirthDay off': 'Paid leave',
-        'Mental Day Off': 'Mental Day Off'
+        'Mental Day Off': 'Paid leave'  # Mental Day Off treated as Paid leave
     })
 
     # Debug print
@@ -216,8 +215,7 @@ def process_data(main, pf_leaves, pf_id, shifts):
         'Paid leave': 'შვ',
         'Unpaid leave': 'არ.შვ',
         'Maternity leave': 'დეკ',
-        'Sick leave': 'ბიულ',
-        'Mental Day Off': 'Mental Day Off'
+        'Sick leave': 'ბიულ'
     }
     main = main.replace(replacement_dict)
 
@@ -242,6 +240,36 @@ def process_data(main, pf_leaves, pf_id, shifts):
     for col in columns_to_update:
         new_col_name = col.replace('მარტი', current_month_georgian)
         main.rename(columns={col: new_col_name}, inplace=True)
+
+    # Reorder columns: move summary columns right after პოზიცია
+    summary_cols = [
+        f'ნამუშევარი საათი 1-15 {current_month_georgian}',
+        f'ნამუშევარი საათი 16-31 {current_month_georgian}',
+        f'ნამუშევარი საათი {current_month_georgian}',
+        f'ნამუშევარი დღე {current_month_georgian}',
+        'OFF',
+        'ანაზღაურებადი შვებულება',
+        'არა ანაზღაურებადი შვებულება',
+        'დეკრეტული',
+        'ბიულეტენი',
+        'სულ არასამუშაო დღე'
+    ]
+
+    # Get columns before პოზიცია
+    cols_before = main.columns[:position_index + 1].tolist()
+
+    # Get date columns (after summary columns in current order)
+    date_cols = [col for col in main.columns if is_date_like(col)]
+
+    # Get any remaining columns that are not in the above lists
+    remaining_cols = [col for col in main.columns
+                     if col not in cols_before
+                     and col not in summary_cols
+                     and col not in date_cols]
+
+    # Reorder: before + summary + date columns + remaining
+    new_order = cols_before + summary_cols + date_cols + remaining_cols
+    main = main[new_order]
 
     # Anonymize 'ID' column
     main['ID'] = main['ID'].str[:-4] + '****'
